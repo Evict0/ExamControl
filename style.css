@@ -571,4 +571,11 @@ body {
     transform: scale(1.05);
 }
 
+/* Stilizacija za formu */
+form {
+    margin-top: 20px;
+}
+
+
+
 

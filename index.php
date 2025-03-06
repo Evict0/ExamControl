@@ -2,15 +2,15 @@
 session_start();
 
 /**
- * If the URL includes ?getQuestions=1, fetch questions from the database.
- * If a theme is selected (via GET parameter "tema" or session variable "temaID"), only fetch questions for that theme.
+ * If ?getQuestions=1 is in the URL, we return JSON immediately.
+ * Otherwise, we load the normal HTML quiz page below.
  */
 if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
-    // Database connection settings – adjust these to your environment.
+    // Database connection settings
     $host    = 'localhost';
-    $db      = 'kviz2';      // Database name where kviz2.sql was imported
-    $user    = 'root';       // Your DB username
-    $pass    = '';           // Your DB password (if any)
+    $db      = 'kviz2';
+    $user    = 'root';
+    $pass    = '';
     $charset = 'utf8mb4';
 
     $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
@@ -28,7 +28,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
          exit;
     }
 
-    // Odredi temu: prvo provjeri GET parametar "tema", a zatim sesijsku varijablu "temaID"
+    // Check if ?tema=... or if session has 'temaID'
     $tema = '';
     if (isset($_GET['tema']) && trim($_GET['tema']) !== '') {
          $tema = trim($_GET['tema']);
@@ -36,8 +36,8 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
          $tema = trim($_SESSION['temaID']);
     }
 
+    // Build the query
     if ($tema !== '') {
-        // Prepare a statement that filters by the given temaID
         $stmt = $pdo->prepare("
             SELECT ID, tekst_pitanja, hint, slika 
             FROM ep_pitanje 
@@ -46,7 +46,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         ");
         $stmt->execute([':tema' => $tema]);
     } else {
-        // No theme provided; fetch all active questions.
+        // If no theme is given, we can return all active questions or an empty set.
         $stmt = $pdo->query("
             SELECT ID, tekst_pitanja, hint, slika 
             FROM ep_pitanje 
@@ -56,18 +56,16 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     }
     $questionsData = $stmt->fetchAll();
 
+    // Process questions and answers
     $questions = [];
-
-    // For each question, get its answers from op_odgovori.
     foreach ($questionsData as $q) {
         $questionId = $q['ID'];
 
-        // Retrieve answers for the current question (order by ID for consistency)
+        // Fetch answers
         $stmtAnswers = $pdo->prepare("
             SELECT tekst, tocno 
             FROM op_odgovori 
-            WHERE pitanjeID = :qid 
-              AND aktivno = 1
+            WHERE pitanjeID = :qid AND aktivno = 1
             ORDER BY ID
         ");
         $stmtAnswers->execute([':qid' => $questionId]);
@@ -81,10 +79,14 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
                 $correctAnswerIndex = $index;
             }
         }
+        // Join answers with "|"
         $answersPipe = implode('|', $answers);
+
         if ($correctAnswerIndex === null) {
+            // If no correct answer is found, set it to -1
             $correctAnswerIndex = -1;
         }
+
         $questions[] = [
             'question'      => $q['tekst_pitanja'],
             'answers'       => $answersPipe,
@@ -94,18 +96,33 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         ];
     }
 
+    // Output as JSON
     header('Content-Type: application/json');
     echo json_encode($questions);
     exit;
 }
+
+// ============== NORMAL (HTML) QUIZ PAGE ==============
+
+// If a user posts 'tema_id', store it in session
+if (isset($_POST['tema_id'])) {
+    $_SESSION['temaID'] = $_POST['tema_id'];
+}
+
+// If no theme is in session, redirect to topic selection
+if (!isset($_SESSION['temaID'])) {
+    header("Location: odabir_teme.php");
+    exit();
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="hr">
 <head>
   <meta charset="UTF-8">
-  <title>Mafija Kviz (Tema Filter)</title>
+  <title>Mafija Kviz</title>
   <style>
-    /* Your neon/mafija design styles */
+    /* Basic reset and neon styling */
     * {
         margin: 0;
         padding: 0;
@@ -127,12 +144,13 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         padding: 30px;
         background: linear-gradient(145deg, #1b1b1b, #000);
         border: 2px solid #ff00ff;
-        box-shadow: 0 0 20px rgba(255, 0, 255, 0.2), 0 0 60px rgba(255, 0, 255, 0.1);
+        box-shadow: 0 0 20px rgba(255,0,255,0.2), 0 0 60px rgba(255,0,255,0.1);
         border-radius: 12px;
         display: flex;
         flex-direction: column;
         min-height: 80vh;
     }
+    /* Question number styling */
     #question-number {
         background: rgba(64, 255, 229, 0.2);
         border: 2px solid #40ffe5;
@@ -145,6 +163,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         color: #40ffe5;
         text-shadow: 0 0 5px #40ffe5;
     }
+    /* Container for question and hint */
     .question-hint-container {
         display: flex;
         width: 100%;
@@ -172,6 +191,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         justify-content: flex-start;
         align-items: flex-start;
     }
+    /* Hint button styling */
     #hint-btn {
         background: #ff00ff;
         color: #fff;
@@ -199,6 +219,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         border-radius: 5px;
         box-shadow: inset 0 0 10px rgba(255, 0, 255, 0.1);
     }
+    /* Answers layout */
     .answers-box {
         width: 100%;
         display: grid;
@@ -211,7 +232,6 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         background-color: #000;
         color: #fff;
         border: 2px solid #ff00ff;
-        margin: 0;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -224,12 +244,13 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     .answer-btn:hover {
         background-color: #111;
         color: #ffae00;
-        box-shadow: inset 0 0 15px rgba(255, 175, 0, 0.5);
+        box-shadow: inset 0 0 15px rgba(255,175,0,0.5);
     }
     .answer-btn.selected {
         background-color: #222;
         box-shadow: 0 0 15px #ffae00, 0 0 25px #ffae00;
     }
+    /* Next button */
     #next-button {
         background-color: #ff00ff;
         color: #fff;
@@ -253,16 +274,16 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         cursor: not-allowed;
         box-shadow: none;
     }
-    /* Scaling za slike kako bi bile normalne veličine */
+    /* Question image */
     #question-image {
         max-width: 100%;
         max-height: 300px;
         width: auto;
         height: auto;
         object-fit: contain;
-        cursor: pointer; /* pokazivač da je klikabilna */
+        cursor: pointer;
     }
-    /* Modal (lightbox) stilovi */
+    /* Modal for enlarged image */
     .modal {
         display: none;
         position: fixed;
@@ -349,7 +370,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     <button id="next-button" disabled>Sljedeće pitanje</button>
   </div>
 
-  <!-- Modal za uvećanu sliku -->
+  <!-- Modal for enlarged image -->
   <div id="imageModal" class="modal">
     <span class="close">&times;</span>
     <img class="modal-content" id="modalImage">
@@ -367,19 +388,21 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     const questionImageContainer= document.getElementById("question-image-container");
     const questionImage         = document.getElementById("question-image");
 
-    // Modal elementi
-    const modal = document.getElementById("imageModal");
+    // Modal for enlarged image
+    const modal      = document.getElementById("imageModal");
     const modalImage = document.getElementById("modalImage");
-    const captionText = document.getElementById("caption");
-    const closeSpan = document.getElementsByClassName("close")[0];
+    const captionText= document.getElementById("caption");
+    const closeSpan  = document.getElementsByClassName("close")[0];
 
     let questions = [];
     let currentQuestionIndex = 0;
     let userAnswers = [];
 
+    // Fetch questions from the server
     async function loadQuestionsFromDB() {
       try {
-        // Kombiniramo GET parametre iz URL-a (npr. ?tema=...) sa getQuestions=1
+        // Add the existing query string to ?getQuestions=1
+        // Or you can just do: fetch("index.php?getQuestions=1")
         const response = await fetch("index.php?getQuestions=1" + window.location.search);
         if (!response.ok) {
           console.error("Server error:", response.status, response.statusText);
@@ -394,6 +417,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
       }
     }
 
+    // Load a single question
     function loadQuestion() {
       resetState();
       const q = questions[currentQuestionIndex];
@@ -434,9 +458,8 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
 
     function selectAnswer(e) {
       answerButtons.forEach(btn => btn.classList.remove("selected"));
-      const clickedBtn = e.target;
-      clickedBtn.classList.add("selected");
-      userAnswers[currentQuestionIndex] = clickedBtn.dataset.index;
+      e.target.classList.add("selected");
+      userAnswers[currentQuestionIndex] = e.target.dataset.index;
       nextButton.disabled = false;
     }
 
@@ -449,6 +472,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
       }
     }
 
+    // Submit answers to forms.php
     function finishQuiz() {
       const form = document.createElement("form");
       form.method = "post";
@@ -460,6 +484,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         input.value = answer;
         form.appendChild(input);
       });
+      // If the URL has &tema=..., pass that along
       const params = new URLSearchParams(window.location.search);
       if (params.has("tema")) {
         const temaInput = document.createElement("input");
@@ -482,19 +507,15 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
       }
     }
 
-    // Dodajemo event listener za klik na sliku kako bi se otvorio modal
+    // Modal for question image
     questionImage.addEventListener("click", function() {
       modal.style.display = "block";
       modalImage.src = this.src;
       captionText.innerText = this.alt;
     });
-
-    // Zatvaranje modala klikom na X
     closeSpan.addEventListener("click", function() {
       modal.style.display = "none";
     });
-
-    // Opcionalno: Zatvaranje modala klikom izvan slike
     modal.addEventListener("click", function(event) {
       if (event.target === modal) {
         modal.style.display = "none";
@@ -505,6 +526,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     nextButton.addEventListener("click", nextQuestion);
     hintButton.addEventListener("click", toggleHint);
 
+    // Load questions on page load
     loadQuestionsFromDB();
   </script>
 </body>
