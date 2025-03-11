@@ -2,11 +2,17 @@
 session_start();
 
 /**
- * If ?getQuestions=1 is in the URL, we return JSON immediately.
- * Otherwise, we load the normal HTML quiz page below.
+ * Ako ?getQuestions=1 postoji u URL-u, vraćamo JSON s pitanjima.
+ * Inače se učitava normalna HTML stranica kviza.
  */
+
+// Ako još nismo postavili vrijeme početka kviza u sesiju, postavi ga sada.
+if (!isset($_SESSION['quiz_start_time'])) {
+    $_SESSION['quiz_start_time'] = date("Y-m-d H:i:s");
+}
+
 if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
-    // Database connection settings
+    // ========== KORAK 1: Spoj na bazu ==========
     $host    = 'localhost';
     $db      = 'kviz2';
     $user    = 'root';
@@ -15,56 +21,56 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
 
     $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
     $options = [
-         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-         PDO::ATTR_EMULATE_PREPARES   => false,
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
     ];
 
     try {
-         $pdo = new PDO($dsn, $user, $pass, $options);
+        $pdo = new PDO($dsn, $user, $pass, $options);
     } catch (PDOException $e) {
-         http_response_code(500);
-         echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
-         exit;
+        http_response_code(500);
+        echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
+        exit;
     }
 
-    // Check if ?tema=... or if session has 'temaID'
+    // ========== KORAK 2: Dohvati pitanja iz baze ==========
+    // Check if ?tema=... ili iz session
     $tema = '';
     if (isset($_GET['tema']) && trim($_GET['tema']) !== '') {
-         $tema = trim($_GET['tema']);
+        $tema = trim($_GET['tema']);
     } elseif (isset($_SESSION['temaID']) && trim($_SESSION['temaID']) !== '') {
-         $tema = trim($_SESSION['temaID']);
+        $tema = trim($_SESSION['temaID']);
     }
 
-    // Build the query
     if ($tema !== '') {
         $stmt = $pdo->prepare("
-            SELECT ID, tekst_pitanja, hint, slika 
-            FROM ep_pitanje 
+            SELECT ID, tekst_pitanja, hint, slika
+            FROM ep_pitanje
             WHERE aktivno = 1 AND temaID = :tema
             ORDER BY ID
         ");
         $stmt->execute([':tema' => $tema]);
     } else {
-        // If no theme is given, we can return all active questions or an empty set.
+        // Ako nema teme, vratimo sva aktivna pitanja (ili prazno, prema želji).
         $stmt = $pdo->query("
-            SELECT ID, tekst_pitanja, hint, slika 
-            FROM ep_pitanje 
+            SELECT ID, tekst_pitanja, hint, slika
+            FROM ep_pitanje
             WHERE aktivno = 1
             ORDER BY ID
         ");
     }
     $questionsData = $stmt->fetchAll();
 
-    // Process questions and answers
+    // ========== KORAK 3: Dohvati odgovore i pripremi JSON ==========
     $questions = [];
     foreach ($questionsData as $q) {
         $questionId = $q['ID'];
 
-        // Fetch answers
+        // Dohvati odgovore
         $stmtAnswers = $pdo->prepare("
-            SELECT tekst, tocno 
-            FROM op_odgovori 
+            SELECT tekst, tocno
+            FROM op_odgovori
             WHERE pitanjeID = :qid AND aktivno = 1
             ORDER BY ID
         ");
@@ -79,13 +85,13 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
                 $correctAnswerIndex = $index;
             }
         }
-        // Join answers with "|"
-        $answersPipe = implode('|', $answers);
 
+        // Ako nema točnog odgovora, neka bude -1
         if ($correctAnswerIndex === null) {
-            // If no correct answer is found, set it to -1
             $correctAnswerIndex = -1;
         }
+
+        $answersPipe = implode('|', $answers);
 
         $questions[] = [
             'question'      => $q['tekst_pitanja'],
@@ -96,33 +102,32 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         ];
     }
 
-    // Output as JSON
+    // ========== KORAK 4: Ispiši JSON i prekini ==========
     header('Content-Type: application/json');
     echo json_encode($questions);
     exit;
 }
 
-// ============== NORMAL (HTML) QUIZ PAGE ==============
+// ============== HTML stranica kviza ==============
 
-// If a user posts 'tema_id', store it in session
+// Ako je korisnik poslao temu (tema_id), spremi je u sesiju
 if (isset($_POST['tema_id'])) {
     $_SESSION['temaID'] = $_POST['tema_id'];
 }
 
-// If no theme is in session, redirect to topic selection
+// Ako nema teme u sesiji, vrati na odabir_teme.php
 if (!isset($_SESSION['temaID'])) {
     header("Location: odabir_teme.php");
     exit();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="hr">
 <head>
   <meta charset="UTF-8">
   <title>Mafija Kviz</title>
   <style>
-    /* Basic reset and neon styling */
+    /* ---- OVDJE IDU SVE TVOJE STILSKE POSTAVKE ---- */
     * {
         margin: 0;
         padding: 0;
@@ -150,7 +155,6 @@ if (!isset($_SESSION['temaID'])) {
         flex-direction: column;
         min-height: 80vh;
     }
-    /* Question number styling */
     #question-number {
         background: rgba(64, 255, 229, 0.2);
         border: 2px solid #40ffe5;
@@ -163,7 +167,6 @@ if (!isset($_SESSION['temaID'])) {
         color: #40ffe5;
         text-shadow: 0 0 5px #40ffe5;
     }
-    /* Container for question and hint */
     .question-hint-container {
         display: flex;
         width: 100%;
@@ -191,7 +194,6 @@ if (!isset($_SESSION['temaID'])) {
         justify-content: flex-start;
         align-items: flex-start;
     }
-    /* Hint button styling */
     #hint-btn {
         background: #ff00ff;
         color: #fff;
@@ -219,7 +221,6 @@ if (!isset($_SESSION['temaID'])) {
         border-radius: 5px;
         box-shadow: inset 0 0 10px rgba(255, 0, 255, 0.1);
     }
-    /* Answers layout */
     .answers-box {
         width: 100%;
         display: grid;
@@ -250,7 +251,6 @@ if (!isset($_SESSION['temaID'])) {
         background-color: #222;
         box-shadow: 0 0 15px #ffae00, 0 0 25px #ffae00;
     }
-    /* Next button */
     #next-button {
         background-color: #ff00ff;
         color: #fff;
@@ -274,7 +274,6 @@ if (!isset($_SESSION['temaID'])) {
         cursor: not-allowed;
         box-shadow: none;
     }
-    /* Question image */
     #question-image {
         max-width: 100%;
         max-height: 300px;
@@ -283,7 +282,6 @@ if (!isset($_SESSION['temaID'])) {
         object-fit: contain;
         cursor: pointer;
     }
-    /* Modal for enlarged image */
     .modal {
         display: none;
         position: fixed;
@@ -370,7 +368,7 @@ if (!isset($_SESSION['temaID'])) {
     <button id="next-button" disabled>Sljedeće pitanje</button>
   </div>
 
-  <!-- Modal for enlarged image -->
+  <!-- Modal za uvećanu sliku -->
   <div id="imageModal" class="modal">
     <span class="close">&times;</span>
     <img class="modal-content" id="modalImage">
@@ -378,17 +376,16 @@ if (!isset($_SESSION['temaID'])) {
   </div>
 
   <script>
-    // DOM references
-    const questionElement       = document.getElementById("question");
-    const answerButtons         = document.querySelectorAll(".answer-btn");
-    const hintButton            = document.getElementById("hint-btn");
-    const hintElement           = document.getElementById("hint");
-    const nextButton            = document.getElementById("next-button");
-    const questionNumberElement = document.getElementById("question-number");
-    const questionImageContainer= document.getElementById("question-image-container");
-    const questionImage         = document.getElementById("question-image");
+    const questionElement        = document.getElementById("question");
+    const answerButtons          = document.querySelectorAll(".answer-btn");
+    const hintButton             = document.getElementById("hint-btn");
+    const hintElement            = document.getElementById("hint");
+    const nextButton             = document.getElementById("next-button");
+    const questionNumberElement  = document.getElementById("question-number");
+    const questionImageContainer = document.getElementById("question-image-container");
+    const questionImage          = document.getElementById("question-image");
 
-    // Modal for enlarged image
+    // Modal za sliku
     const modal      = document.getElementById("imageModal");
     const modalImage = document.getElementById("modalImage");
     const captionText= document.getElementById("caption");
@@ -398,12 +395,18 @@ if (!isset($_SESSION['temaID'])) {
     let currentQuestionIndex = 0;
     let userAnswers = [];
 
-    // Fetch questions from the server
+    // Učitavanje pitanja
     async function loadQuestionsFromDB() {
       try {
-        // Add the existing query string to ?getQuestions=1
-        // Or you can just do: fetch("index.php?getQuestions=1")
-        const response = await fetch("index.php?getQuestions=1" + window.location.search);
+        // fetch("index.php?getQuestions=1")
+        // Ako ima query string (npr. ?tema=2), zadrži ga i dodaj &getQuestions=1
+        let url = "index.php?getQuestions=1";
+        const queryString = window.location.search;
+        if (queryString) {
+          url += queryString.replace("?", "&");
+        }
+
+        const response = await fetch(url);
         if (!response.ok) {
           console.error("Server error:", response.status, response.statusText);
           questionElement.innerText = "Greška pri učitavanju pitanja!";
@@ -417,12 +420,12 @@ if (!isset($_SESSION['temaID'])) {
       }
     }
 
-    // Load a single question
+    // Učitaj jedno pitanje
     function loadQuestion() {
       resetState();
       const q = questions[currentQuestionIndex];
       questionElement.innerText = q.question;
-      
+
       if (q.image && q.image.trim() !== "") {
         questionImage.src = q.image;
         questionImageContainer.style.display = "block";
@@ -472,7 +475,7 @@ if (!isset($_SESSION['temaID'])) {
       }
     }
 
-    // Submit answers to forms.php
+    // Kad kviz završi, šaljemo podatke forms.php
     function finishQuiz() {
       const form = document.createElement("form");
       form.method = "post";
@@ -484,7 +487,7 @@ if (!isset($_SESSION['temaID'])) {
         input.value = answer;
         form.appendChild(input);
       });
-      // If the URL has &tema=..., pass that along
+      // Ako je &tema=... u URL-u, proslijedi ga
       const params = new URLSearchParams(window.location.search);
       if (params.has("tema")) {
         const temaInput = document.createElement("input");
@@ -507,7 +510,7 @@ if (!isset($_SESSION['temaID'])) {
       }
     }
 
-    // Modal for question image
+    // Modal za sliku
     questionImage.addEventListener("click", function() {
       modal.style.display = "block";
       modalImage.src = this.src;
@@ -526,7 +529,7 @@ if (!isset($_SESSION['temaID'])) {
     nextButton.addEventListener("click", nextQuestion);
     hintButton.addEventListener("click", toggleHint);
 
-    // Load questions on page load
+    // Pokreni učitavanje pitanja
     loadQuestionsFromDB();
   </script>
 </body>
