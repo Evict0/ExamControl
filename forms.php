@@ -570,6 +570,11 @@ if (isset($_GET['exam_id'])) {
         <form action="odabir_teme.php" method="post">
             <input type="submit" name="retry" value="Pokušaj ponovo" class="results-btn">
         </form>
+        <form action="posalji_mail.php" method="post">
+    <input type="hidden" name="testId" value="<?= htmlspecialchars($testId) ?>">
+    <input type="submit" name="sendMail" value="Pošalji rezultate na mail" class="results-btn">
+</form>
+
     </div>
     </body>
     </html>

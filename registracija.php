@@ -1,4 +1,4 @@
-<?php
+<?php 
 session_start();
 
 $servername = "localhost";
@@ -13,13 +13,13 @@ try {
     die("Greška s bazom: " . $e->getMessage());
 }
 
-// 2) Get all grades for dropdown
+// 2) Dohvati sve razrede za dropdown
 $sqlRazred = "SELECT * FROM ep_razred ORDER BY tip, razred";
 $stmtRazred = $conn->prepare($sqlRazred);
 $stmtRazred->execute();
 $gradeOptions = $stmtRazred->fetchAll(PDO::FETCH_ASSOC);
 
-// 3) Get all topics for checkboxes
+// 3) Dohvati sve teme za checkbox-e
 $sqlTeme = "SELECT * FROM ep_teme ORDER BY naziv";
 $stmtTeme = $conn->prepare($sqlTeme);
 $stmtTeme->execute();
@@ -27,57 +27,91 @@ $allTeme = $stmtTeme->fetchAll(PDO::FETCH_ASSOC);
 
 $poruka = "";
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $ime       = trim($_POST['ime'] ?? '');
-    $email     = trim($_POST['email'] ?? '');
-    $lozinka   = trim($_POST['password'] ?? '');
-    $razredId  = trim($_POST['razred_id'] ?? '');
-    $odabraneTeme = $_POST['teme'] ?? []; // array of selected topic IDs
+    $ime         = trim($_POST['ime'] ?? '');
+    $email       = trim($_POST['email'] ?? '');
+    $lozinka     = trim($_POST['password'] ?? '');
+    $razredId    = trim($_POST['razred_id'] ?? '');
+    $odabraneTeme = $_POST['teme'] ?? []; // array odabranih tema
 
-    // Validate required fields
+    // 1) Provjera da su sva polja popunjena
     if (empty($ime) || empty($email) || empty($lozinka) || empty($razredId)) {
         $poruka = "Molimo ispunite sva polja i odaberite razred.";
     } 
-    // Ensure at least one topic is selected
-    elseif (empty($odabraneTeme)) {
-        $poruka = "Molimo odaberite barem jednu temu.";
-    } 
     else {
-        // Check if email already exists
-        $stmtCheck = $conn->prepare("SELECT ID FROM ep_korisnik WHERE email = :email LIMIT 1");
-        $stmtCheck->bindParam(':email', $email);
-        $stmtCheck->execute();
-
-        if ($stmtCheck->rowCount() > 0) {
-            $poruka = "Ovaj email je već registriran.";
-        } else {
-            // Insert new user (using MD5 for password, razinaID=2 => 'učenik', aktivan=1)
-            $stmtInsert = $conn->prepare("
-                INSERT INTO ep_korisnik (ime, lozinka, razinaID, aktivan, email, razred_id)
-                VALUES (:ime, MD5(:lozinka), 2, 1, :email, :razred_id)
-            ");
-            $stmtInsert->bindParam(':ime', $ime);
-            $stmtInsert->bindParam(':lozinka', $lozinka);
-            $stmtInsert->bindParam(':email', $email);
-            $stmtInsert->bindParam(':razred_id', $razredId);
-            $stmtInsert->execute();
-
-            // Get the newly created user's ID
-            $newUserId = $conn->lastInsertId();
-
-            // Insert selected topics into ep_korisnik_teme
-            $stmtTemeInsert = $conn->prepare("
-                INSERT IGNORE INTO ep_korisnik_teme (korisnik_id, tema_id) 
-                VALUES (:korisnik_id, :tema_id)
-            ");
-            foreach ($odabraneTeme as $temaId) {
-                $stmtTemeInsert->execute([
-                    ':korisnik_id' => $newUserId,
-                    ':tema_id'     => $temaId
-                ]);
+        // 2) Provjera sadrži li ime neprikladnu riječ
+        $badWords = [
+            'kurac', 'pička', 'picka', 'jeb', 'jebi', 'jebo', 'govno', 'sranje', 'idiot', 'budala',
+            'fuck', 'shit', 'bitch', 'asshole', 'dick', 'cunt', 'whore', 'faggot', 'retard',
+            'kurcina', 'jebo ti', 'jebem', 'jebem te', 'pizda', 'jebiga', 'jebem se', 'jebo si',
+            'kurac ti', 'kuracina', 'pičke', 'pičkica', 'pičkasti', 'jebena', 'jebeni', 'jebeno',
+            'jebem li', 'govnilo', 'idiota', 'budale', 'fuckface', 'fuckhead', 'motherfucker',
+            'dickhead', 'cocksucker', 'bastard', 'prick', 'slut', 'pussy', 'nigga', 'nigger', 'fucker',
+            'fucking', 'shithead', 'son of a bitch', 'dumbass', 'douchebag', 'asswipe', 'bimbo',
+            'dickwad', 'dickhole', 'fucking asshole', 'fucking shit', 'fag', 'piss off', 'fuck off',
+            'screw you', 'fuck you', 'shut up', 'moron', 'imbecile', 'twat', 'wanker', 'sod off',
+            'git', 'fuk', 'dildo', 'cock', 'dumbfuck', 'jackass', 'fucktard', 'fuckwit',
+            'pussylicker', 'assbag', 'assclown', 'asshat', 'assmunch', 'arsehole', 'bollocks',
+            'bugger', 'bloody', 'bollock', 'minge', 'prat', 'piss', 'pissed', 'wank', 'tosser',
+            'tosspot', 'crikey', 'sod', 'wazzock', 'numpty', 'fanny', 'fannyflaps', 'minger',
+            'scrubber', 'shite', 'spanner'
+        ];
+        
+        foreach ($badWords as $bw) {
+            if (stripos($ime, $bw) !== false) {
+                $poruka = "Molimo upotrijebite prikladno ime (bez uvredljivih riječi).";
+                break;
             }
+        }
+    }
 
-            // Success message
-            $poruka = "Uspješna registracija! Možete se prijaviti.";
+    // Ako već imamo poruku (npr. vulgarnost), preskoči daljnje provjere
+    if (empty($poruka)) {
+        // 3) Provjera formata email adrese
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $poruka = "Molimo unesite ispravnu email adresu.";
+        }
+        // 4) Provjera da je odabrana barem jedna tema
+        elseif (empty($odabraneTeme)) {
+            $poruka = "Molimo odaberite barem jednu temu.";
+        } 
+        else {
+            // 5) Provjera postoji li već email u bazi
+            $stmtCheck = $conn->prepare("SELECT ID FROM ep_korisnik WHERE email = :email LIMIT 1");
+            $stmtCheck->bindParam(':email', $email);
+            $stmtCheck->execute();
+
+            if ($stmtCheck->rowCount() > 0) {
+                $poruka = "Ovaj email je već registriran.";
+            } else {
+                // 6) Ubacivanje novog korisnika (MD5 za lozinku, razinaID=2 => 'učenik', aktivan=1)
+                $stmtInsert = $conn->prepare("
+                    INSERT INTO ep_korisnik (ime, lozinka, razinaID, aktivan, email, razred_id)
+                    VALUES (:ime, MD5(:lozinka), 2, 1, :email, :razred_id)
+                ");
+                $stmtInsert->bindParam(':ime', $ime);
+                $stmtInsert->bindParam(':lozinka', $lozinka);
+                $stmtInsert->bindParam(':email', $email);
+                $stmtInsert->bindParam(':razred_id', $razredId);
+                $stmtInsert->execute();
+
+                // Dohvati ID novokreiranog korisnika
+                $newUserId = $conn->lastInsertId();
+
+                // 7) Ubaci odabrane teme u ep_korisnik_teme
+                $stmtTemeInsert = $conn->prepare("
+                    INSERT IGNORE INTO ep_korisnik_teme (korisnik_id, tema_id) 
+                    VALUES (:korisnik_id, :tema_id)
+                ");
+                foreach ($odabraneTeme as $temaId) {
+                    $stmtTemeInsert->execute([
+                        ':korisnik_id' => $newUserId,
+                        ':tema_id'     => $temaId
+                    ]);
+                }
+
+                // 8) Poruka o uspješnoj registraciji
+                $poruka = "Uspješna registracija! Možete se prijaviti.";
+            }
         }
     }
 }
@@ -203,26 +237,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <?php if (!empty($poruka)) : ?>
             <p id="login-message"><?= htmlspecialchars($poruka) ?></p>
         <?php endif; ?>
-        <!-- Registration form -->
+        <!-- Forma za registraciju -->
         <form method="POST">
-            <!-- Name/username -->
+            <!-- Ime ili korisničko ime -->
             <div class="form-group">
                 <label for="ime">Ime ili korisničko ime:</label>
                 <input type="text" name="ime" id="ime" placeholder="Unesite ime..." 
                        value="<?= isset($_POST['ime']) ? htmlspecialchars($_POST['ime']) : '' ?>">
             </div>
-            <!-- Email -->
+            <!-- Email adresa -->
             <div class="form-group">
                 <label for="email">Email adresa:</label>
                 <input type="text" name="email" id="email" placeholder="Unesite email..." 
                        value="<?= isset($_POST['email']) ? htmlspecialchars($_POST['email']) : '' ?>">
             </div>
-            <!-- Password -->
+            <!-- Lozinka -->
             <div class="form-group">
                 <label for="password">Lozinka:</label>
                 <input type="password" name="password" id="password" placeholder="Unesite lozinku...">
             </div>
-            <!-- Grade -->
+            <!-- Odabir razreda -->
             <div class="form-group">
                 <label for="razred_id">Odaberite razred:</label>
                 <select name="razred_id" id="razred_id">
@@ -235,7 +269,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     <?php endforeach; ?>
                 </select>
             </div>
-            <!-- Topics checkboxes -->
+            <!-- Odabir tema -->
             <div class="form-group">
                 <label>Odaberite teme:</label>
                 <?php foreach ($allTeme as $tema): ?>
@@ -248,10 +282,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </div>
                 <?php endforeach; ?>
             </div>
-            <!-- Submit -->
+            <!-- Gumb za registraciju -->
             <button type="submit">Registriraj se</button>
         </form>
-        <!-- Link to login -->
+        <!-- Link na login -->
         <a class="button-link" href="login.php">
             <button type="button">Natrag na login</button>
         </a>
