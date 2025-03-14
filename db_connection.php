@@ -1,15 +1,16 @@
 <?php
 // db_connection.php
+
+// Database connection parameters
 $servername = "localhost";
-$dbUsername = "examportalsql";
-$dbPassword = '1dBL$oV+e?RD';
-$dbname     = "zavrsni2024";
+$dbUsername = "examportalsql";  // Promijenite ako treba
+$dbPassword = '1dBL$oV+e?RD';   // Promijenite ako treba
+$dbname     = "kviz2";          // Promijenite prema vašoj bazi
 
-// Kreiranje konekcije pomoću MySQLi
-$conn = new mysqli($servername, $dbUsername, $dbPassword, $dbname);
-
-// Provjera konekcije
-if ($conn->connect_error) {
-    die("Konekcija nije uspjela: " . $conn->connect_error);
+try {
+    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $dbUsername, $dbPassword);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Greška s bazom: " . $e->getMessage());
 }
 ?>
