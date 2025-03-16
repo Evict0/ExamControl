@@ -5,21 +5,14 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$servername = "localhost";
-$dbUsername = "root";
-$dbPassword = "";
-$dbname     = "kviz2";
-
-try {
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $dbUsername, $dbPassword);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die("Greška s bazom: " . $e->getMessage());
-}
+// Uključi datoteku za konekciju s bazom
+require_once 'db_connection.php';  // Uključivanje db_connection.php
 
 // Preuzmi podatke o korisniku
 $userId    = $_SESSION['user_id'];
 $userLevel = $_SESSION['razina'] ?? 2; // 2 = student by default
+
+$poruka = "";
 
 // Dohvati povijest ispita za ulogiranog korisnika.
 // Pretpostavimo da tablica ep_test ima primarni ključ ID (kao exam_id).
@@ -51,7 +44,7 @@ if ($userLevel == 1) {
     $korisnikTeme = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } else {
     // Student (razina 2) vidi samo one teme koje su mu dodijeljene
-    $stmt = $conn->prepare("
+    $stmt = $conn->prepare(" 
         SELECT t.ID AS theme_id, 
                t.naziv AS theme_name, 
                COUNT(p.ID) AS broj_pitanja

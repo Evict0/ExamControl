@@ -12,23 +12,17 @@ if (!isset($_SESSION['razina']) || $_SESSION['razina'] != 1) {
     die("Samo profesori mogu dodavati pitanja.");
 }
 
-// Database connection parameters
-$servername = "localhost";
-$dbUsername = "root";
-$dbPassword = "";
-$dbname     = "kviz2";
+// Uključi datoteku za konekciju s bazom
+require_once 'db_connection.php';  // Ovdje uključujemo db_connection.php
+
+$poruka = ""; // Status message
+$hint   = ""; // Hint text
 
 try {
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $dbUsername, $dbPassword);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
     // Fetch all topics (since teacher can see all)
     $stmt = $conn->prepare("SELECT ID, naziv FROM ep_teme ORDER BY naziv");
     $stmt->execute();
     $popisTema = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $poruka = ""; // Status message
-    $hint   = ""; // Hint text
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Retrieve data
@@ -132,7 +126,7 @@ try {
             // Insert answers
             for ($i = 0; $i < 4; $i++) {
                 if (!empty(trim($answers[$i]))) {
-                    $sqlOdgovori = "INSERT INTO op_odgovori
+                    $sqlOdgovori = "INSERT INTO ep_odgovori
                                     (tekst, pitanjeID, tocno, korisnikID, aktivno)
                                     VALUES (:tekst, :pitanjeID, :tocno, :korisnikID, 1)";
                     $stmtOdgovor = $conn->prepare($sqlOdgovori);
@@ -152,6 +146,7 @@ try {
     die("Greška s bazom: " . $e->getMessage());
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="hr">
 <head>

@@ -1,22 +1,13 @@
 <?php
 session_start();
 
+// Uključi datoteku za konekciju s bazom
+require_once 'db_connection.php';  // Uključivanje db_connection.php
+
 // Check if user is logged in and topics are selected
 if (!isset($_SESSION['user_id']) || empty($_POST['teme'])) {
     header('Location: odabir_teme.php');
     exit();
-}
-
-$servername = "localhost";
-$dbUsername = "root";
-$dbPassword = "";
-$dbname     = "kviz2";
-
-try {
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $dbUsername, $dbPassword);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die("Greška s bazom: " . $e->getMessage());
 }
 
 $userId = $_SESSION['user_id'];

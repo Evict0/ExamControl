@@ -6,35 +6,19 @@ if (isset($_GET['exam_id'])) {
     // === REŽIM PREGLEDA RANIJEG ISPITA ===
     $exam_id = intval($_GET['exam_id']);
 
-    // Povezivanje na bazu (PDO)
-    $hostDB    = 'localhost';
-    $db        = 'kviz2';
-    $userDB    = 'root';
-    $passDB    = '';
-    $charset   = 'utf8mb4';
-    $dsn = "mysql:host=$hostDB;dbname=$db;charset=$charset";
-    $options = [
-         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-         PDO::ATTR_EMULATE_PREPARES   => false,
-    ];
-
-    try {
-         $pdo = new PDO($dsn, $userDB, $passDB, $options);
-    } catch (PDOException $e) {
-         die("Greška pri spajanju na bazu: " . $e->getMessage());
-    }
+    // Uključi datoteku za konekciju s bazom
+    require_once 'db_connection.php';  // Uključivanje db_connection.php
 
     // Dohvati osnovne podatke o ispitu iz ep_test
-    $stmt = $pdo->prepare("SELECT * FROM ep_test WHERE ID = :exam_id LIMIT 1");
+    $stmt = $conn->prepare("SELECT * FROM ep_test WHERE ID = :exam_id LIMIT 1");
     $stmt->execute([':exam_id' => $exam_id]);
     $exam = $stmt->fetch();
     if (!$exam) {
-         die("Ispit nije pronađen.");
+        die("Ispit nije pronađen.");
     }
 
     // Dohvati sve odgovore iz ep_test_odgovori za ovaj ispit
-    $stmt2 = $pdo->prepare("SELECT * FROM ep_test_odgovori WHERE test_id = :exam_id");
+    $stmt2 = $conn->prepare("SELECT * FROM ep_test_odgovori WHERE test_id = :exam_id");
     $stmt2->execute([':exam_id' => $exam_id]);
     $allAnswers = $stmt2->fetchAll();
 
@@ -293,24 +277,7 @@ if (isset($_GET['exam_id'])) {
     $incorrectCount = $totalQuestions - $score;
 
     // Povezivanje na bazu
-    $hostDB    = 'localhost';
-    $db        = 'kviz2';
-    $userDB    = 'root';
-    $passDB    = '';
-    $charset   = 'utf8mb4';
-
-    $dsn = "mysql:host=$hostDB;dbname=$db;charset=$charset";
-    $options = [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ];
-
-    try {
-        $pdo = new PDO($dsn, $userDB, $passDB, $options);
-    } catch (PDOException $e) {
-        die("Greška pri spajanju na bazu: " . $e->getMessage());
-    }
+    require_once 'db_connection.php';  // Uključivanje db_connection.php
 
     // Odredi vrijeme početka i kraja
     $vrijeme_pocetka = isset($_SESSION['quiz_start_time']) ? $_SESSION['quiz_start_time'] : date("Y-m-d H:i:s");
@@ -366,8 +333,8 @@ if (isset($_GET['exam_id'])) {
               :broj_pokusaja
             )
         ";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([ 
             ':korisnikID'      => $korisnikID,
             ':vrijeme_pocetka' => $vrijeme_pocetka,
             ':vrijeme_kraja'   => $vrijeme_kraja,
@@ -384,19 +351,17 @@ if (isset($_GET['exam_id'])) {
     }
 
     // Dohvati ID novounesenog ispita
-    $testId = $pdo->lastInsertId();
+    $testId = $conn->lastInsertId();
 
     // Spremi svaki odgovor u ep_test_odgovori
-    // (kako bismo kasnije mogli prikazati iste tablice "Pregled")
     try {
-        // Pripremi statement
         $sql2 = "
             INSERT INTO ep_test_odgovori
             (test_id, question_text, user_answer_text, correct_answer_text, explanation, is_correct)
             VALUES
             (:test_id, :question_text, :user_answer_text, :correct_answer_text, :explanation, :is_correct)
         ";
-        $stmt2 = $pdo->prepare($sql2);
+        $stmt2 = $conn->prepare($sql2);
 
         // Prvo spremi točne odgovore
         foreach ($correctAnswers as $item) {
@@ -519,6 +484,7 @@ if (isset($_GET['exam_id'])) {
     <body>
     <div class="results-container">
         <h1>Rezultati Kviza</h1>
+        <h3 style="text-align:center;">Test je trajao: <?= htmlspecialchars($trajanje) ?></h3>
         <p class="score">
             <strong>Ukupno bodova:</strong> <?= $score ?> od <?= $totalQuestions ?>
         </p>
@@ -563,19 +529,38 @@ if (isset($_GET['exam_id'])) {
                 </tr>
                 <?php } ?>
             </table>
+            
+<?php
+$historySql = "
+SELECT e.ID AS exam_id, e.vrijeme_kraja, e.trajanje, e.ukupno_pitanja, e.tocno_odgovori, e.netocno_odgovori, e.kviz_id,
+       t.naziv AS theme_name
+FROM ep_test e
+LEFT JOIN ep_teme t ON e.kviz_id = t.ID
+WHERE e.korisnikID = :userId
+ORDER BY e.vrijeme_kraja DESC
+";
+$historyStmt = $conn->prepare($historySql);
+$userId    = $_SESSION['user_id'];
+$historyStmt->execute([':userId' => $userId]);
+// Ako očekujete samo jedan zapis, možete koristiti fetch() umjesto fetchAll()
+$examHistory = $historyStmt->fetch(PDO::FETCH_ASSOC);
+
+?>
+
         <?php } else { ?>
             <p style="text-align:center;">Svi odgovori su točni!</p>
         <?php } ?>
+        <form action="posalji_mail.php" method="post">
+  <!-- Pretpostavljamo da u PHP varijabli $testId (ili $exam_id) već imaš ID testa -->
+  <input type="hidden" name="testId" value="<?= isset($testId) ? htmlspecialchars($testId) : '0'; ?>">
+  <button type="submit" class="results-btn">Pošalji rezultate na email</button>
+</form>
 
         <form action="odabir_teme.php" method="post">
             <input type="submit" name="retry" value="Pokušaj ponovo" class="results-btn">
         </form>
-        <form action="posalji_mail.php" method="post">
-    <input type="hidden" name="testId" value="<?= htmlspecialchars($testId) ?>">
-    <input type="submit" name="sendMail" value="Pošalji rezultate na mail" class="results-btn">
-</form>
-
     </div>
+   
     </body>
     </html>
     <?php

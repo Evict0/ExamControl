@@ -6,33 +6,17 @@ use PHPMailer\PHPMailer\Exception;
 
 require __DIR__ . '/vendor/autoload.php'; // prilagodite putanju ako je potrebno
 
+// Uključi datoteku za konekciju s bazom
+require_once 'db_connection.php';  // Uključivanje db_connection.php
+
 // 1. Provjera sesije
 if (!isset($_SESSION['user_id'])) {
     die("Korisnik nije prijavljen.");
 }
 $korisnikID = $_SESSION['user_id'];
 
-// 2. Povezivanje na bazu
-$hostDB  = 'localhost';
-$db      = 'kviz2';
-$userDB  = 'root';
-$passDB  = '';
-$charset = 'utf8mb4';
-$dsn = "mysql:host=$hostDB;dbname=$db;charset=$charset";
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
-];
-
-try {
-    $pdo = new PDO($dsn, $userDB, $passDB, $options);
-} catch (PDOException $e) {
-    die("Greška pri spajanju na bazu: " . $e->getMessage());
-}
-
-// 3. Dohvati email i ime korisnika iz ep_korisnik
-$stmtUser = $pdo->prepare("SELECT email, ime FROM ep_korisnik WHERE ID = :id LIMIT 1");
+// 2. Dohvati email i ime korisnika iz ep_korisnik
+$stmtUser = $conn->prepare("SELECT email, ime FROM ep_korisnik WHERE ID = :id LIMIT 1");
 $stmtUser->execute([':id' => $korisnikID]);
 $user = $stmtUser->fetch();
 if (!$user) {
@@ -41,22 +25,22 @@ if (!$user) {
 $emailKorisnika = $user['email'];
 $userName = $user['ime'];
 
-// 4. Dohvati testId i provjeri
+// 3. Dohvati testId i provjeri
 $testId = isset($_POST['testId']) ? intval($_POST['testId']) : 0;
 if (!$testId) {
     die("Nevažeći test ID.");
 }
 
-// 5. Dohvati podatke o testu
-$stmtTest = $pdo->prepare("SELECT * FROM ep_test WHERE ID = :testId LIMIT 1");
+// 4. Dohvati podatke o testu
+$stmtTest = $conn->prepare("SELECT * FROM ep_test WHERE ID = :testId LIMIT 1");
 $stmtTest->execute([':testId' => $testId]);
 $test = $stmtTest->fetch();
 if (!$test) {
     die("Test nije pronađen.");
 }
 
-// 6. Dohvati sve odgovore za taj test
-$stmtAns = $pdo->prepare("SELECT * FROM ep_test_odgovori WHERE test_id = :testId");
+// 5. Dohvati sve odgovore za taj test
+$stmtAns = $conn->prepare("SELECT * FROM ep_test_odgovori WHERE test_id = :testId");
 $stmtAns->execute([':testId' => $testId]);
 $allAnswers = $stmtAns->fetchAll();
 
@@ -84,7 +68,7 @@ $trajanje       = $test['trajanje'];
 $vrijemeStart   = $test['vrijeme_pocetka'];
 $vrijemeEnd     = $test['vrijeme_kraja'];
 
-// 7. Sastavite HTML sadržaj s formalnijim tekstom
+// 6. Sastavite HTML sadržaj s formalnijim tekstom
 $htmlContent = '<!DOCTYPE html>
 <html>
 <head>
@@ -257,3 +241,4 @@ try {
 } catch (Exception $e) {
     echo "Greška pri slanju emaila: " . $mail->ErrorInfo;
 }
+?>

@@ -1,18 +1,12 @@
 <?php
 session_start();
 
-// Database connection
-$servername = "localhost";
-$dbUsername = "root";
-$dbPassword = "";
-$dbname     = "kviz2";
+// Uključi datoteku za konekciju s bazom
+require_once 'db_connection.php';  // Uključivanje db_connection.php
 
-try {
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $dbUsername, $dbPassword);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die("Greška s bazom: " . $e->getMessage());
-}
+
+
+
 
 // Fetch available themes
 $stmt = $conn->query("SELECT ID, naziv FROM ep_teme");

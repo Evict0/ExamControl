@@ -1,10 +1,8 @@
 <?php 
 session_start();
 
-$servername = "localhost";
-$dbUsername = "root";
-$dbPassword = "";
-$dbname     = "kviz2";
+// Uključi datoteku za konekciju s bazom
+require_once 'db_connection.php';  // Uključivanje db_connection.php
 
 try {
     $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8", $dbUsername, $dbPassword);
@@ -103,8 +101,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     VALUES (:korisnik_id, :tema_id)
                 ");
                 foreach ($odabraneTeme as $temaId) {
-                    $stmtTemeInsert->execute([
-                        ':korisnik_id' => $newUserId,
+                    $stmtTemeInsert->execute([ 
+                        ':korisnik_id' => $newUserId, 
                         ':tema_id'     => $temaId
                     ]);
                 }

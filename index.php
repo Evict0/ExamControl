@@ -12,29 +12,12 @@ if (!isset($_SESSION['quiz_start_time'])) {
 }
 
 if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
-    // ========== KORAK 1: Spoj na bazu ==========
-    $host    = 'localhost';
-    $db      = 'kviz2';
-    $user    = 'root';
-    $pass    = '';
-    $charset = 'utf8mb4';
+    // ========== KORAK 1: Uključi datoteku za konekciju s bazom ==========
 
-    $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
-    $options = [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ];
-
-    try {
-        $pdo = new PDO($dsn, $user, $pass, $options);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
-        exit;
-    }
+    require_once 'db_connection.php';  // Uključivanje db_connection.php
 
     // ========== KORAK 2: Dohvati pitanja iz baze ==========
+
     // Check if ?tema=... ili iz session
     $tema = '';
     if (isset($_GET['tema']) && trim($_GET['tema']) !== '') {
@@ -44,7 +27,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     }
 
     if ($tema !== '') {
-        $stmt = $pdo->prepare("
+        $stmt = $conn->prepare("
             SELECT ID, tekst_pitanja, hint, slika
             FROM ep_pitanje
             WHERE aktivno = 1 AND temaID = :tema
@@ -53,7 +36,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
         $stmt->execute([':tema' => $tema]);
     } else {
         // Ako nema teme, vratimo sva aktivna pitanja (ili prazno, prema želji).
-        $stmt = $pdo->query("
+        $stmt = $conn->query("
             SELECT ID, tekst_pitanja, hint, slika
             FROM ep_pitanje
             WHERE aktivno = 1
@@ -63,14 +46,15 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     $questionsData = $stmt->fetchAll();
 
     // ========== KORAK 3: Dohvati odgovore i pripremi JSON ==========
+
     $questions = [];
     foreach ($questionsData as $q) {
         $questionId = $q['ID'];
 
         // Dohvati odgovore
-        $stmtAnswers = $pdo->prepare("
+        $stmtAnswers = $conn->prepare("
             SELECT tekst, tocno
-            FROM op_odgovori
+            FROM ep_odgovori
             WHERE pitanjeID = :qid AND aktivno = 1
             ORDER BY ID
         ");
@@ -103,6 +87,7 @@ if (isset($_GET['getQuestions']) && $_GET['getQuestions'] == 1) {
     }
 
     // ========== KORAK 4: Ispiši JSON i prekini ==========
+
     header('Content-Type: application/json');
     echo json_encode($questions);
     exit;
@@ -322,6 +307,20 @@ if (!isset($_SESSION['temaID'])) {
     .close:focus {
         color: #bbb;
         text-decoration: none;
+    }
+    .modal-content {
+        margin: auto;
+    }
+    .close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        color: #fff;
+        font-size: 40px;
+        font-weight: bold;
+    }
+    .close:hover, .close:focus {
+        color: #bbb;
     }
     @media (max-width: 768px) {
         .quiz-container {
